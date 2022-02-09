@@ -456,12 +456,26 @@ impl FileSystem {
         }
     }
 
+    fn is_reachable(&self, watch_descriptor: &Path) -> bool {
+        false
+    }
+
     fn process_delete(
         &mut self,
         watch_descriptor: &Path,
         _entries: &mut EntryMap,
     ) -> FsResult<Vec<Event>> {
         // Creates the events, does _not_ remove things from the fs cache
+        // Check if entry is one of the initial dirs, if it is, return
+        // Check if any reachable symlinks reference it
+        //   If it's reachable via a symlink then check if the symlink is reachable without going
+        //   through the entry, ie check the symlink isn't a simple cycle
+        //     if the symlink is independently reachable, return
+        // If it is a candidate for unwatching then
+        //   If it's a file emit a Delete
+        //   if it's a dir then process_delete for each child in dir then emit delete the dir
+        //   if it's a symlink then process_delete on the target (if it exists), emit a delete, check if the symlink's parent dir is empty, if so recurse process_delete up to it
+
         if let Ok(entry_key) = self.get_first_entry(watch_descriptor) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
             let path = entry.path().to_path_buf();
