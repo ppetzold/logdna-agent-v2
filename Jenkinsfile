@@ -8,6 +8,7 @@ pipeline {
     agent {
         node {
             label "ec2-fleet"
+            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
         }
     }
     options {
