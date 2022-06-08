@@ -11,3 +11,5 @@
 .vscode/launch.json
 .vscode/settings.json
 .aws_creds_static
+docker/.kind_config
+docker/.kind_config_host
