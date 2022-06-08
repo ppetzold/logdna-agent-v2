@@ -1,0 +1,20 @@
+pub struct ContainerStats {
+    container_age: String,
+    container: String,
+    cpu_limit: i16,
+    cpu_request: i16,
+    cpu_usage: i16,
+    image_tag: String,
+    image: String,
+    last_finished: String,
+    last_reason: String,
+    last_started: String,
+    last_state: String,
+    memory_limit: i32,
+    memory_request: i32,
+    memory_usage: i32,
+    ready: String,
+    restarts: i16,
+    started: String,
+    state: String
+}

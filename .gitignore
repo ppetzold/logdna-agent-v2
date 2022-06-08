@@ -8,3 +8,6 @@
 .DS_Store
 *.stamp
 /mk*
+.vscode/launch.json
+.vscode/settings.json
+.aws_creds_static

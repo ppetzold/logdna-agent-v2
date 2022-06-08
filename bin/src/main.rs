@@ -2,7 +2,7 @@
 extern crate log;
 
 use futures::Stream;
-
+use k8s::metrics_server_watcher::MetricsServerWatcher;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
 use env_logger::Env;
@@ -19,7 +19,6 @@ use journald::journalctl::create_journalctl_source;
 
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
-
 use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use kube::Client as Kube_Client;
@@ -99,6 +98,9 @@ async fn main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let user_agent = config.http.template.user_agent.clone();
+    let metric_agent = config.http.template.user_agent.clone();
+
+
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -204,6 +206,21 @@ async fn main() {
         }
     };
 
+    let _metric_server_watcher = match create_k8s_client_default_from_env(metric_agent) {
+        Ok(client) => {
+
+            let metric_server_watcher = MetricsServerWatcher::new(client);
+
+            tokio::spawn(async {
+                metric_server_watcher.start_metrics_call_task().await;
+            });
+
+        },
+        Err (e) => {
+            warn!("Unable to initialize kubernetes client for the reporter: {}", e);
+        }
+    };
+    
     match LineRules::new(
         &config.log.line_exclusion_regex,
         &config.log.line_inclusion_regex,
@@ -309,7 +326,6 @@ async fn main() {
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);
     pin_mut!(journalctl_source);
-
     #[cfg(feature = "libjournald")]
     pin_mut!(journald_source);
 
@@ -343,7 +359,7 @@ async fn main() {
         info!("Enabling k8s_event_source");
         sources.push(k)
     };
-
+    
     let lines_stream = sources.map(|line| match line {
         StrictOrLazyLineBuilder::Strict(mut line) => {
             if executor.process(&mut line).is_some() {

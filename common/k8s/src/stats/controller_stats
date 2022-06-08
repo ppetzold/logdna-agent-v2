@@ -1,0 +1,6 @@
+pub struct ControllerStats {
+    containers_ready: String,
+    containers_total: String,
+    pods_ready: String,
+    pods_total: String
+}
