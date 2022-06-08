@@ -19,6 +19,7 @@ pub mod lease;
 pub mod middleware;
 pub mod restarting_stream;
 pub mod metrics_server_watcher;
+mod stat_models;
 
 #[derive(Clone, std::fmt::Debug, PartialEq)]
 pub enum K8sTrackingConf {

@@ -100,7 +100,6 @@ async fn main() {
     let user_agent = config.http.template.user_agent.clone();
     let metric_agent = config.http.template.user_agent.clone();
 
-
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
