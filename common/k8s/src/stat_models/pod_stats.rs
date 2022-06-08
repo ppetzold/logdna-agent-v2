@@ -104,14 +104,12 @@ impl PodStats {
 
 fn get_controller_details(owners: Option<Vec<OwnerReference>>) -> (String, String)
 {
-    if !owners.is_some() {
-        return ("".to_string(), "".to_string());
-    }
+    if owners.is_some() {
+        for owner in owners.unwrap() {
 
-    for owner in owners.unwrap() {
-
-        if owner.controller == Some(true) {
-            return (owner.name, owner.kind);
+            if owner.controller == Some(true) {
+                return (owner.name, owner.kind);
+            }
         }
     }
 
