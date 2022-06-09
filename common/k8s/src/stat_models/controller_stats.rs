@@ -1,20 +1,36 @@
-use k8s_openapi::api::core::v1::Pod;
-
 pub struct ControllerStats {
-    containers_ready: String,
-    containers_total: String,
-    pods_ready: String,
-    pods_total: String
+    containers_ready: i32,
+    containers_total: i32,
+    pods_ready: i32,
+    pods_total: i32
 }
 
 impl ControllerStats {
 
-    pub fn build(p: Pod) -> ControllerStats {
+    pub fn build() -> ControllerStats {
+
         ControllerStats {
-            containers_ready: todo!(),
-            containers_total: todo!(),
-            pods_ready: todo!(),
-            pods_total: todo!(),
-        }
+            containers_ready: 0,
+            containers_total: 0,
+            pods_ready: 0,
+            pods_total: 0,
+        }  
     }
+
+    pub fn inc_containers_ready(&mut self) {
+        self.containers_ready += 1;
+    }
+
+    pub fn inc_containers_total(&mut self) {
+        self.containers_total += 1;
+    }
+
+    pub fn inc_pods_ready(&mut self) {
+        self.pods_ready += 1;
+    }
+
+    pub fn inc_pods_total(&mut self) {
+        self.pods_total += 1;
+    }
+
 }

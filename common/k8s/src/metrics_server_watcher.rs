@@ -9,8 +9,10 @@ use kube::{
 
 use std:: time::{Duration};
 use tokio::time::{sleep};
+use std::collections::HashMap;
 
-use crate::stat_models::pod_stats::PodStats;
+
+use crate::stat_models::{pod_stats::PodStats, controller_stats::ControllerStats};
 
 
 pub struct MetricsServerWatcher {
@@ -41,10 +43,22 @@ async fn gather_reporter_info(client: Client) -> anyhow::Result<()> {
     let pod_metrics = self::call_metric_api(&"PodMetrics", client.clone()).await?;
     let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
 
+    let mut pod_map = HashMap::new();
+    let mut pod_controller = HashMap::new();
+
     for pod in pods {
-        let pod_stats = PodStats::build(pod.clone());
-        info!("pod_stats {:?}", pod_stats);
+        let translated_pod = PodStats::build(&pod);
+        pod_map.insert(format!("{}.{}", translated_pod.namespace, translated_pod.pod), "");
+
+        //let translated_controller = ControllerStats::build(&pod);
+        pod_controller.insert(format!("{}.{}.{}", translated_pod.namespace, translated_pod.controller_type, translated_pod.controller), "");
+
+
     }
+
+    //
+
+    //let pod_stats = PodStats::build(pod.clone());
 
     Ok(())
 }

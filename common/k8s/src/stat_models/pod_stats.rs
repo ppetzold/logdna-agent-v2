@@ -1,34 +1,37 @@
 use chrono::{Utc, DateTime, NaiveDate};
 use k8s_openapi::{api::core::v1::{Pod}, apimachinery::pkg::apis::meta::v1::{OwnerReference, Time}};
 
+use super::container_stats::ContainerStats;
+
 pub struct PodStats {
-    controller: String,
-    controller_type: String,
-    created: Time,
-    ip: String,
-    namespace: String,
-    node: String,
-    phase: String,
-    pod_age: String,
-    pod: String,
-    priority_class: String,
-    priority: String,
-    qos_class: String,
-    resource: String,
-    r#type: String,
+    pub controller: String,
+    pub controller_type: String,
+    pub created: Time,
+    pub ip: String,
+    pub namespace: String,
+    pub node: String,
+    pub phase: String,
+    pub pod_age: String,
+    pub pod: String,
+    pub priority_class: String,
+    pub priority: String,
+    pub qos_class: String,
+    pub resource: String,
+    pub r#type: String
 }
 
 impl PodStats {
-
-    pub fn build(p: Pod) -> PodStats {
+    pub fn build(p: &Pod) -> PodStats {
 
         let default_naive_date = NaiveDate::from_ymd(0001, 1, 1).and_hms(0, 0, 0);
         let default_date_time = Time(DateTime::<Utc>::from_utc(default_naive_date, Utc));
 
-        let details = get_controller_details(p.metadata.owner_references);
+        let details = get_controller_details(&p.metadata.owner_references);
 
-        let spec = p.spec;
-        let status = p.status;
+        let spec = &p.spec;
+        let status = &p.status;
+
+        // if anything is missing abort spec, status, metadata
 
         let mut priority: i32 = -1; // TODO 
         let mut priority_class_name: String = String::new();
@@ -47,11 +50,11 @@ impl PodStats {
                 }
 
                 if spec.priority_class_name.is_some() {
-                    priority_class_name = spec.priority_class_name.unwrap();
+                    priority_class_name = spec.priority_class_name.clone().unwrap();
                 }
 
                 if spec.node_name.is_some() {
-                    node_name = spec.node_name.unwrap();
+                    node_name = spec.node_name.clone().unwrap();
                 }
             },
             None => {}
@@ -61,19 +64,19 @@ impl PodStats {
             Some(status) => {
 
                 if status.start_time.is_some() {
-                    created = status.start_time.unwrap();
+                    created = status.start_time.clone().unwrap();
                 }
 
                 if status.pod_ip.is_some() {
-                    ip = status.pod_ip.unwrap();
+                    ip = status.pod_ip.clone().unwrap();
                 }
 
                 if status.phase.is_some() {
-                    phase = status.phase.unwrap();
+                    phase = status.phase.clone().unwrap();
                 }
 
                 if status.qos_class.is_some() {
-                    qos_class = status.qos_class.unwrap();
+                    qos_class = status.qos_class.clone().unwrap();
                 }
             },
             None => {},
@@ -84,16 +87,16 @@ impl PodStats {
             controller_type: details.1,
             created,
             ip,
-            namespace: p.metadata.namespace.unwrap_or("".to_string()),
+            namespace: p.metadata.namespace.clone().unwrap_or("".to_string()),
             node: node_name,
             phase,
             pod_age: "".to_string(), //TODO
-            pod: p.metadata.name.unwrap_or("".to_string()),
+            pod: p.metadata.name.clone().unwrap_or("".to_string()),
             priority_class: priority_class_name,
             priority: priority.to_string(),
             qos_class,
             resource: "container".to_string(),
-            r#type: "metric".to_string()
+            r#type: "metric".to_string(),
         }
 
     }
@@ -101,13 +104,13 @@ impl PodStats {
     
 }
 
-fn get_controller_details(owners: Option<Vec<OwnerReference>>) -> (String, String)
+fn get_controller_details(owners: &Option<Vec<OwnerReference>>) -> (String, String)
 {
     if owners.is_some() {
-        for owner in owners.unwrap() {
+        for owner in owners.as_ref().unwrap() {
 
             if owner.controller == Some(true) {
-                return (owner.name, owner.kind);
+                return (owner.name.clone(), owner.kind.clone());
             }
         }
     }
