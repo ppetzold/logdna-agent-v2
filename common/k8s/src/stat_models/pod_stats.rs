@@ -1,7 +1,6 @@
 use chrono::{Utc, DateTime, NaiveDate};
 use k8s_openapi::{api::core::v1::{Pod}, apimachinery::pkg::apis::meta::v1::{OwnerReference, Time}};
 
-#[derive(Debug)]
 pub struct PodStats {
     controller: String,
     controller_type: String,
@@ -31,7 +30,7 @@ impl PodStats {
         let spec = p.spec;
         let status = p.status;
 
-        let mut priority: i32 = -1;
+        let mut priority: i32 = -1; // TODO 
         let mut priority_class_name: String = String::new();
         let mut node_name: String = String::new();
 
