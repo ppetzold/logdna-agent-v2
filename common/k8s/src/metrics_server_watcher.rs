@@ -29,7 +29,7 @@ impl MetricsServerWatcher {
     pub async fn start_metrics_call_task(self) {
 
         loop {
-            self::gather_reporter_info(self.client.clone()).await.unwrap();
+            self::gather_reporter_info(self.client.clone()).await.unwrap(); // TODO probably shouldn't clone here
             sleep(Duration::from_millis(30000)).await;
         }
     }    
@@ -43,17 +43,27 @@ async fn gather_reporter_info(client: Client) -> anyhow::Result<()> {
     let pod_metrics = self::call_metric_api(&"PodMetrics", client.clone()).await?;
     let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
 
-    let mut pod_map = HashMap::new();
-    let mut pod_controller = HashMap::new();
+    let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
 
     for pod in pods {
         let translated_pod = PodStats::build(&pod);
-        pod_map.insert(format!("{}.{}", translated_pod.namespace, translated_pod.pod), "");
 
-        //let translated_controller = ControllerStats::build(&pod);
-        pod_controller.insert(format!("{}.{}.{}", translated_pod.namespace, translated_pod.controller_type, translated_pod.controller), "");
+        let controller_key = format!("{}.{}.{}", translated_pod.namespace, translated_pod.controller_type, translated_pod.controller);
 
+        if controller_map.contains_key(&controller_key) {
+            
 
+            for condition in pod.status.unwrap().conditions.unwrap() {
+                if condition.status.to_lowercase() == "true" && condition.type_.to_lowercase() == "ready" {
+                    controller_map.get_mut(&controller_key).unwrap().inc_pods_ready();
+                }
+            }    
+        }
+        else {
+            controller_map.insert(controller_key.clone(), ControllerStats::new());
+        }
+
+        controller_map.get_mut(&controller_key).unwrap().inc_pods_total();
     }
 
     //

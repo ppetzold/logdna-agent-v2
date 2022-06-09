@@ -6,15 +6,13 @@ pub struct ControllerStats {
 }
 
 impl ControllerStats {
-
-    pub fn build() -> ControllerStats {
-
-        ControllerStats {
+    pub fn new() -> Self {
+        Self {
             containers_ready: 0,
             containers_total: 0,
             pods_ready: 0,
             pods_total: 0,
-        }  
+        }
     }
 
     pub fn inc_containers_ready(&mut self) {
