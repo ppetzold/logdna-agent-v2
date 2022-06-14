@@ -1,53 +1,68 @@
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Container, ContainerStatus};
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct ContainerStats {
-    container_age: String,
-    container: String,
-    cpu_limit: i16,
-    cpu_request: i16,
-    cpu_usage: i16,
-    image_tag: String,
-    image: String,
-    last_finished: String,
-    last_reason: String,
-    last_started: String,
-    last_state: String,
-    memory_limit: i32,
-    memory_request: i32,
-    memory_usage: i32,
-    ready: String,
-    restarts: i16,
-    started: String,
-    state: String
+    pub container_age: String,
+    pub container: String,
+    pub cpu_limit: i16,
+    pub cpu_request: i16,
+    pub cpu_usage: String,
+    pub image_tag: String,
+    pub image: String,
+    pub last_finished: String,
+    pub last_reason: String,
+    pub last_started: String,
+    pub last_state: String,
+    pub memory_limit: i32,
+    pub memory_request: i32,
+    pub memory_usage: String,
+    pub ready: String,
+    pub restarts: i16,
+    pub started: String,
+    pub state: String
 }
 
 impl ContainerStats {
 
-    pub fn build(p: Pod) -> ContainerStats {
+    pub fn build(c: &Container, s: &ContainerStatus, cpu_usage: String, memory_usage: String) -> ContainerStats {
+
+        let container = c.name.clone();
+        let mut image = String::new();
+        let mut image_tag = String::new();
+        let cpu_request = 0; // TODO 
+        let cpu_limit = 0;
+        let memory_request = 0;
+        let memory_limit = 0;
+
+        if c.image.is_some()
+        {
+            image = c.image.clone().unwrap();
+
+            let split_image: Vec<&str> = c.image.as_ref().unwrap().split(":").collect();
+            image_tag = split_image[0].to_string();
+        }
 
 
-
-
-        
         ContainerStats {
-            container_age: todo!(),
-            container: todo!(),
-            cpu_limit: todo!(),
-            cpu_request: todo!(),
-            cpu_usage: todo!(),
-            image_tag: todo!(),
-            image: todo!(),
-            last_finished: todo!(),
-            last_reason: todo!(),
-            last_started: todo!(),
-            last_state: todo!(),
-            memory_limit: todo!(),
-            memory_request: todo!(),
-            memory_usage: todo!(),
-            ready: todo!(),
-            restarts: todo!(),
-            started: todo!(),
-            state: todo!(),
+            container_age: String::new(),
+            container: String::new(),
+            cpu_limit: -1,
+            cpu_request,
+            cpu_usage : cpu_usage,
+            image_tag,
+            image: image,
+            last_finished: String::new(),
+            last_reason: String::new(),
+            last_started: String::new(),
+            last_state: String::new(),
+            memory_limit,
+            memory_request,
+            memory_usage: memory_usage,
+            ready: String::new(),
+            restarts: 0,
+            started: String::new(),
+            state: String::new(),
         }
     }
 }

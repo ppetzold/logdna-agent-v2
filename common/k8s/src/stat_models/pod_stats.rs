@@ -1,8 +1,35 @@
+use std::{collections::HashMap};
 use chrono::{Utc, DateTime, NaiveDate};
 use k8s_openapi::{api::core::v1::{Pod}, apimachinery::pkg::apis::meta::v1::{OwnerReference, Time}};
+use serde::{Serialize, Deserialize};
+use serde_json::Value;
 
-use super::container_stats::ContainerStats;
+use super::{container_stats::ContainerStats, controller_stats::ControllerStats};
 
+#[derive(Serialize, Deserialize)]
+pub struct PodAndContainerStats{
+    #[serde(flatten)]
+    pub pod_stats: PodStats, 
+
+    #[serde(flatten)]
+    pub container_stats: ContainerStats,
+
+    #[serde(flatten)]
+    pub controller_stats: ControllerStats
+}
+
+impl PodAndContainerStats {
+    pub fn new(p: PodStats, c: ContainerStats) -> Self {
+
+        Self { 
+            pod_stats: p, 
+            container_stats: c, 
+            controller_stats: ControllerStats::new()
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PodStats {
     pub controller: String,
     pub controller_type: String,
@@ -17,11 +44,12 @@ pub struct PodStats {
     pub priority: String,
     pub qos_class: String,
     pub resource: String,
-    pub r#type: String
+    pub r#type: String,
 }
 
+
 impl PodStats {
-    pub fn build(p: &Pod) -> PodStats {
+    pub fn new(p: &Pod) -> Self {
 
         let default_naive_date = NaiveDate::from_ymd(0001, 1, 1).and_hms(0, 0, 0);
         let default_date_time = Time(DateTime::<Utc>::from_utc(default_naive_date, Utc));
@@ -82,6 +110,7 @@ impl PodStats {
             None => {},
         }
 
+        // Need to add controller stats for printing 
         PodStats {
             controller: details.0,
             controller_type: details.1,
@@ -96,13 +125,12 @@ impl PodStats {
             priority: priority.to_string(),
             qos_class,
             resource: "container".to_string(),
-            r#type: "metric".to_string(),
+            r#type: "metric".to_string()
         }
 
     }
-
-    
 }
+
 
 fn get_controller_details(owners: &Option<Vec<OwnerReference>>) -> (String, String)
 {

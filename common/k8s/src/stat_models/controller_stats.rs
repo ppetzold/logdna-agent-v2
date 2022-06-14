@@ -1,8 +1,11 @@
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct ControllerStats {
-    containers_ready: i32,
-    containers_total: i32,
-    pods_ready: i32,
-    pods_total: i32
+    pub containers_ready: i32,
+    pub containers_total: i32,
+    pub pods_ready: i32,
+    pub pods_total: i32
 }
 
 impl ControllerStats {
@@ -29,6 +32,13 @@ impl ControllerStats {
 
     pub fn inc_pods_total(&mut self) {
         self.pods_total += 1;
+    }
+
+    pub fn copy_stats(&mut self, value: &ControllerStats) {
+        self.containers_ready = value.containers_ready;
+        self.containers_total = value.containers_total;
+        self.pods_ready = value.pods_ready;
+        self.pods_total = value.pods_total;
     }
 
 }
