@@ -150,7 +150,6 @@ fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
     let mut denominator= 1000000.0;
 
     if parsed_value < 1.0 || unit.is_empty() {
-        info!("TINY");
         return (parsed_value * 1000.0).ceil() as i32;
     }
 
@@ -163,7 +162,7 @@ fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
             denominator = 1000.0;
         }
 
-        "n" => {info!("NANO");}
+        "n" => {}
 
         &_ => { error!("Unknown CPU unit") }
     }
