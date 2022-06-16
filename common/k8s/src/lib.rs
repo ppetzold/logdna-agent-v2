@@ -18,8 +18,8 @@ pub mod event_source;
 pub mod lease;
 pub mod middleware;
 pub mod restarting_stream;
-pub mod metrics_server_watcher;
-pub mod stat_models;
+pub mod metrics_stats_aggregator;
+pub mod kube_stats;
 
 #[derive(Clone, std::fmt::Debug, PartialEq)]
 pub enum K8sTrackingConf {
