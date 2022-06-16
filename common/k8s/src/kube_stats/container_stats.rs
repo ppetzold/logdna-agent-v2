@@ -1,5 +1,5 @@
 use chrono::{Local};
-use k8s_openapi::api::{core::v1::{Container, ContainerStatus, ContainerState}, batch::v1::CronJobSpec};
+use k8s_openapi::{api::{core::v1::{Container, ContainerStatus, ContainerState}, batch::v1::CronJobSpec}, Resource};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
@@ -7,10 +7,10 @@ pub struct ContainerStats {
     pub container_age: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub container: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub cpu_limit: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub cpu_request: String,
+    #[serde(skip_serializing_if = "skip_serializing_int32")]
+    pub cpu_limit: i32,
+    #[serde(skip_serializing_if = "skip_serializing_int32")]
+    pub cpu_request: i32,
     pub cpu_usage: i32,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub image_tag: String,
@@ -24,10 +24,10 @@ pub struct ContainerStats {
     pub last_started: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub last_state: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub memory_limit: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub memory_request: String,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub memory_limit: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub memory_request: i64,
     pub memory_usage: i64,
     pub ready: bool,
     pub restarts: i32,
@@ -50,6 +50,12 @@ impl ContainerStats {
         let mut last_reason = String::new();
         let mut last_started = String::new();
         let mut last_finished = String::new();
+
+        let mut cpu_limit = -1;
+        let mut cpu_request = -1;
+        let mut memory_limit = -1;
+        let mut memory_request = -1;
+
         let mut container_age: i64 = 0;
 
         let restarts =  c_status.restart_count;
@@ -105,7 +111,7 @@ impl ContainerStats {
             }
         }
 
-        // If same - we don't want to print 
+        // If same as previous state - we don't want to print 
         if last_state.eq(&state){
             last_state = "".to_string();
             last_reason = "".to_string();
@@ -114,11 +120,45 @@ impl ContainerStats {
 
         }
 
+        let resources = c.resources.as_ref();
+
+        if resources.is_some() {
+            let limits = resources.unwrap().limits.as_ref();
+
+            if limits.is_some() {
+                let cpu = limits.unwrap().get("cpu");
+                let memory = limits.unwrap().get("memory");
+
+                if cpu.is_some() {
+                    cpu_limit = self::convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
+                }
+
+                if memory.is_some() {
+                    memory_limit = self::convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
+                }
+            }
+
+            let requests = resources.unwrap().requests.as_ref();
+
+            if requests.is_some() {
+                let cpu = requests.unwrap().get("cpu");
+                let memory = requests.unwrap().get("memory");
+
+                if cpu.is_some() {
+                    cpu_request= self::convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
+                }
+
+                if memory.is_some() {
+                    memory_request = self::convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
+                }
+            }
+        }
+
         ContainerStats {
             container_age,
             container,
-            cpu_limit: "".to_string(),
-            cpu_request: "".to_string(),
+            cpu_limit,
+            cpu_request,
             cpu_usage,
             image_tag,
             image,
@@ -126,8 +166,8 @@ impl ContainerStats {
             last_reason,
             last_started,
             last_state,
-            memory_limit: "".to_string(),
-            memory_request: "".to_string(),
+            memory_limit,
+            memory_request,
             memory_usage,
             ready,
             restarts,
@@ -212,9 +252,20 @@ fn convert_memory_usage_to_bytes(memory: &str) -> i64{
         "m" => {
             multiplier = 1000000;
         }
+        "g" => {
+            multiplier = 1000i64.pow(3);
+        }
 
         &_ => {}
     }
 
     return parsed_value * multiplier;
+}
+
+fn skip_serializing_int32(n: &i32) -> bool {
+    n.is_negative()
+}
+
+fn skip_serializing_int64(n: &i64) -> bool {
+    n.is_negative()
 }
