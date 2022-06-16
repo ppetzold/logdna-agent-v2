@@ -1,9 +1,10 @@
+use chrono::Local;
 use k8s_openapi::api::core::v1::Node;
 
 pub struct NodeStats {
     resource: String,
     r#type: String,
-    age: String,
+    age: i64,
     container_runtime_version: String,
     containers_init: i16,
     containers_ready: i16,
@@ -42,12 +43,40 @@ pub struct NodeStats {
 
 impl NodeStats {
 
-    pub fn build(n: Node) -> NodeStats {
+    pub fn new(n: &Node) -> NodeStats {
+
+        let mut age = 0;
+
+        let mut container_runtime_version = String::new();
+
+        let spec = &n.spec;
+        let status = &n.status;
+
+        match spec {
+            Some(spec) => {
+
+            },
+            None => {}
+        }
+
+        match status {
+            Some(status) => {
+                
+                if status.node_info.is_some() {
+                    container_runtime_version = status.node_info.as_ref().unwrap().container_runtime_version.clone();
+                }
+            },
+            None => {},
+        }
+
+        if n.metadata.creation_timestamp.is_some() {
+            let node_created = n.metadata.creation_timestamp.clone().unwrap();
+            age = Local::now().signed_duration_since(node_created.0).num_milliseconds();
+        }
+
         NodeStats {
-            resource: todo!(),
-            r#type: todo!(),
-            age: todo!(),
-            container_runtime_version: todo!(),
+            age,
+            container_runtime_version,
             containers_init: todo!(),
             containers_ready: todo!(),
             containers_running: todo!(),
@@ -81,6 +110,8 @@ impl NodeStats {
             ready_transition_time: todo!(),
             ready: todo!(),
             unschedulable: todo!(),
+            resource: "node".to_string(),
+            r#type: "metric".to_string()
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::kube_stats::{
     container_stats::ContainerStats,
     controller_stats::ControllerStats,
     extended_pod_stats::{ExtendedPodStats},
-    pod_stats::PodStats,
+    pod_stats::PodStats, node_stats::NodeStats,
 };
 
 pub struct MetricsServerAggregator {
@@ -45,20 +45,24 @@ impl MetricsServerAggregator {
 
 async fn gather_reporter_info(client: Client) -> anyhow::Result<()> {
     let pods = self::get_all_pods(client.clone()).await?;
-    //let node_info = self::get_all_nodes(client.clone()).await;
+    let nodes = self::get_all_nodes(client.clone()).await?;
 
     let pod_metrics = self::call_metric_api(&"PodMetrics", client.clone()).await?;
-
-    //let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
+    let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
 
     let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
     let mut pod_usage_map: HashMap<String, Value> = HashMap::new();
+    let mut node_usage_map: HashMap<String, Value> = HashMap::new();
 
     let mut extended_pod_stats: Vec<ExtendedPodStats> = Vec::new();
 
     build_pod_metric_map(pod_metrics, &mut pod_usage_map);
     process_pods(pods, &mut controller_map, pod_usage_map, &mut extended_pod_stats);
     print_pods(extended_pod_stats, controller_map);
+
+    build_node_metric_map(node_metrics, &mut node_usage_map);
+    process_nodes(nodes, node_usage_map);
+    //print_pods(extended_pod_stats, controller_map);
 
     Ok(())
 }
@@ -80,6 +84,15 @@ fn build_pod_metric_map(pod_metrics: ObjectList<DynamicObject>, pod_usage_map: &
                 pod_usage_map.insert(container_name.unwrap().to_string(), container["usage"].clone());
             }
         }
+    }
+}
+
+fn build_node_metric_map(node_metrics: ObjectList<DynamicObject>, node_usage_map: &mut HashMap<String, Value>) {
+    for node_metric in node_metrics {
+        let node_name = node_metric.metadata.name.unwrap_or_else(|| "NONE".to_string());
+        let usage = &node_metric.data["usage"];
+
+        node_usage_map.insert(node_name, usage.clone());
     }
 }
 
@@ -207,6 +220,18 @@ fn process_pods(
     }
 }
 
+fn process_nodes(nodes: ObjectList<Node>, node_usage_map: HashMap<String, Value>) {
+    for node in nodes {
+    
+        if node.spec.is_none() || node.status.is_none() || node.metadata.name.is_none() {
+            continue;
+        }
+
+        let translated_node = NodeStats::new(&node);
+    }
+
+}
+
 async fn call_metric_api(
     kind: &str,
     client: Client,
@@ -220,15 +245,12 @@ async fn call_metric_api(
     items
 }
 
-/* 
-async fn get_all_nodes(client: Client) -> ObjectList<Node> {
+async fn get_all_nodes(client: Client) -> Result<ObjectList<Node>, kube::Error>  {
     let api: Api<Node> = Api::all(client);
-    let nodes = api.list(&ListParams::default()).await.unwrap();
+    let nodes = api.list(&ListParams::default()).await;
 
     nodes
 }
-
-*/
 
 async fn get_all_pods(client: Client) -> Result<ObjectList<Pod>, kube::Error> {
     let api: Api<Pod> = Api::all(client);
