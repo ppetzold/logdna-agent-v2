@@ -40,7 +40,6 @@ impl PodStats {
         let spec = &p.spec;
         let status = &p.status;
 
-        
         let mut created: i64 = 0;
         let mut priority_class = String::new();
         let mut node = String::new();
