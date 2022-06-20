@@ -127,3 +127,55 @@ fn get_controller_details(owners: &Option<Vec<OwnerReference>>) -> (String, Stri
 
     return ("".to_string(), "".to_string());
 }
+
+#[derive(Debug)]
+pub struct NodePodStats {
+    pub pods_failed: i32,
+    pub pods_pending: i32,
+    pub pods_running: i32,
+    pub pods_succeeded: i32,
+    pub pods_unknown: i32,
+    pub pods_total: i32
+}
+
+impl NodePodStats {
+    pub fn new() -> Self {
+
+        NodePodStats { 
+            pods_failed: 0, 
+            pods_pending: 0, 
+            pods_running: 0, 
+            pods_succeeded: 0, 
+            pods_unknown: 0,
+            pods_total: 0
+        }
+    }
+
+    pub fn inc(&mut self, phase: &str) {
+
+        self.pods_total += 1;
+
+        match phase.to_lowercase().as_str() {
+            "failed" => {
+                self.pods_failed += 1;
+            }
+            "pending" => {
+                self.pods_pending += 1;
+            }
+            "running" => {
+                self.pods_running += 1;
+            }
+            "succeeded" => {
+                self.pods_succeeded += 1;
+            }
+            "unknown" => {
+                self.pods_unknown += 1;
+            }
+            _ => {
+                self.pods_unknown += 1;
+            }
+        }
+
+    }
+
+}

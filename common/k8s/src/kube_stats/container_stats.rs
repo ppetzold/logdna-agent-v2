@@ -1,6 +1,8 @@
 use chrono::{Local};
-use k8s_openapi::{api::{core::v1::{Container, ContainerStatus, ContainerState}, batch::v1::CronJobSpec}, Resource};
+use k8s_openapi::{api::{core::v1::{Container, ContainerStatus, ContainerState}}};
 use serde::{Serialize, Deserialize};
+
+use super::helpers::{convert_memory_usage_to_bytes, convert_cpu_usage_to_milli};
 
 #[derive(Serialize, Deserialize)]
 pub struct ContainerStats {
@@ -40,8 +42,8 @@ impl ContainerStats {
     pub fn new(c: &Container, c_status: &ContainerStatus, c_state: &ContainerState, raw_cpu_usage: &str, raw_memory_usage: &str) -> ContainerStats {
         let container = c.name.clone();
 
-        let memory_usage = self::convert_memory_usage_to_bytes(&raw_memory_usage);
-        let cpu_usage = self::convert_cpu_usage_to_milli(&raw_cpu_usage);
+        let memory_usage = convert_memory_usage_to_bytes(&raw_memory_usage);
+        let cpu_usage = convert_cpu_usage_to_milli(&raw_cpu_usage);
 
         let mut image = String::new();
         let mut image_tag = String::new();
@@ -130,11 +132,11 @@ impl ContainerStats {
                 let memory = limits.unwrap().get("memory");
 
                 if cpu.is_some() {
-                    cpu_limit = self::convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
+                    cpu_limit = convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
                 }
 
                 if memory.is_some() {
-                    memory_limit = self::convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
+                    memory_limit = convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
                 }
             }
 
@@ -145,11 +147,11 @@ impl ContainerStats {
                 let memory = requests.unwrap().get("memory");
 
                 if cpu.is_some() {
-                    cpu_request= self::convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
+                    cpu_request= convert_cpu_usage_to_milli(cpu.unwrap().0.as_str());
                 }
 
                 if memory.is_some() {
-                    memory_request = self::convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
+                    memory_request = convert_memory_usage_to_bytes(memory.unwrap().0.as_str());
                 }
             }
         }
@@ -177,95 +179,62 @@ impl ContainerStats {
     }
 }
 
-fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
-    if cpu.is_empty()
-    {
-        return 0;
-    }
-
-    let value: String = cpu.chars().filter(|c| c.is_digit(10)).collect();
-    let unit: String = cpu.chars().filter(|c| c.is_alphabetic()).collect();
-
-    if value.is_empty() {
-        return 0;
-    }
-
-    let parsed_value: f64 = value.parse().unwrap_or_else(|_| 0f64);
-
-    let mut denominator= 1000000.0;
-
-    if parsed_value < 1.0 || unit.is_empty() {
-        return (parsed_value * 1000.0).ceil() as i32;
-    }
-
-    match unit.as_str() {
-        "m" => {
-            denominator = 1.0;
-        }
-        "u" => {
-            denominator = 1000.0;
-        }
-        "n" => {}
-
-        &_ => { error!("Unknown CPU unit") }
-    }
-
-    let result = (parsed_value/denominator).ceil() as i32;
-
-    result
-}
-
-fn convert_memory_usage_to_bytes(memory: &str) -> i64{
-    if memory.is_empty()
-    {
-        return 0;
-    }
-
-    let value: String = memory.chars().filter(|c| c.is_digit(10)).collect();
-    let mut unit: String = memory.chars().filter(|c| c.is_alphabetic()).collect();
-    unit = unit.to_lowercase();
-
-    if value.is_empty() {
-        return 0;
-    }
-
-    let parsed_value: i64 = value.parse().unwrap_or_else(|_| 0i64);
-    let mut multiplier: i64= 1024;
-
-    match unit.as_str() {
-        "" => {
-            multiplier = 1;
-        }
-        "ki" => {}
-        "mi" => {
-            multiplier = multiplier.pow(2);
-        }
-        "gi" => {
-            multiplier = multiplier.pow(3);
-        }
-        "ti" => {
-            multiplier = multiplier.pow(4);
-        }
-        "k" => {
-            multiplier = 1000;
-        }
-        "m" => {
-            multiplier = 1000000;
-        }
-        "g" => {
-            multiplier = 1000i64.pow(3);
-        }
-
-        &_ => {}
-    }
-
-    return parsed_value * multiplier;
-}
-
 fn skip_serializing_int32(n: &i32) -> bool {
     n.is_negative()
 }
 
 fn skip_serializing_int64(n: &i64) -> bool {
     n.is_negative()
+}
+
+#[derive(Debug)]
+pub struct NodeContainerStats {
+    pub containers_waiting: i32,
+    pub containers_total: i32,
+    pub containers_terminated: i32,
+    pub containers_running: i32,
+    pub containers_ready: i32,
+    pub containers_init: i32
+}
+
+impl NodeContainerStats {
+    pub fn new() -> Self {
+
+        NodeContainerStats { 
+            containers_waiting: 0, 
+            containers_total: 0, 
+            containers_terminated: 0, 
+            containers_running: 0, 
+            containers_ready: 0,
+            containers_init: 0
+        }
+    }
+
+    pub fn inc(&mut self, state: &str, ready: bool, init: bool) {
+
+        if init {
+            self.containers_init += 1;
+        }
+
+        match state.to_lowercase().as_str() {
+            "waiting" => {
+                self.containers_waiting += 1;
+                self.containers_total += 1;
+            }
+            "terminated" => {
+                self.containers_terminated += 1;
+                self.containers_total += 1;
+            }
+            "running" => {
+                self.containers_running += 1;
+                self.containers_total += 1;
+
+                if ready {
+                    self.containers_ready += 1;
+                }
+            }
+            _ => {}
+        }
+
+    }
 }

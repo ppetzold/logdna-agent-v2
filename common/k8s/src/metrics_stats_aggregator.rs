@@ -1,7 +1,7 @@
 use anyhow::{Result};
 use core::result::Result::Ok;
 
-use k8s_openapi::api::core::v1::{Node, Pod};
+use k8s_openapi::api::core::v1::{Node, Pod, Container, ContainerStatus};
 use kube::{
     api::{Api, DynamicObject, GroupVersionKind, ListParams, ObjectList},
     discovery::{self},
@@ -9,15 +9,15 @@ use kube::{
 };
 use serde_json::Value;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, any::Any};
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::kube_stats::{
-    container_stats::ContainerStats,
+    container_stats::{ContainerStats, NodeContainerStats, self},
     controller_stats::ControllerStats,
     extended_pod_stats::{ExtendedPodStats},
-    pod_stats::PodStats, node_stats::NodeStats,
+    pod_stats::{PodStats, NodePodStats, self}, node_stats::NodeStats,
 };
 
 pub struct MetricsServerAggregator {
@@ -51,18 +51,22 @@ async fn gather_reporter_info(client: Client) -> anyhow::Result<()> {
     let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
 
     let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
+    let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();
+    let mut node_container_counts_map: HashMap<String, NodeContainerStats> = HashMap::new();
+
     let mut pod_usage_map: HashMap<String, Value> = HashMap::new();
     let mut node_usage_map: HashMap<String, Value> = HashMap::new();
 
     let mut extended_pod_stats: Vec<ExtendedPodStats> = Vec::new();
+    let mut node_stats: Vec<NodeStats> = Vec::new();
 
     build_pod_metric_map(pod_metrics, &mut pod_usage_map);
-    process_pods(pods, &mut controller_map, pod_usage_map, &mut extended_pod_stats);
+    process_pods(pods, &mut controller_map, pod_usage_map, &mut extended_pod_stats, &mut node_pod_counts_map, &mut node_container_counts_map);
     print_pods(extended_pod_stats, controller_map);
 
     build_node_metric_map(node_metrics, &mut node_usage_map);
-    process_nodes(nodes, node_usage_map);
-    //print_pods(extended_pod_stats, controller_map);
+    process_nodes(nodes, node_usage_map, &mut node_stats, &mut node_pod_counts_map, &mut node_container_counts_map);
+    print_nodes(node_stats);
 
     Ok(())
 }
@@ -114,11 +118,20 @@ fn print_pods(extended_pod_stats: Vec<ExtendedPodStats>, controller_map: HashMap
     }
 }
 
+fn print_nodes(nodes: Vec<NodeStats>) {
+    for node in nodes {
+
+        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&node).unwrap()); // wrap in kube {}
+    }
+}
+
 fn process_pods(
     pods: ObjectList<Pod>,
     controller_map: &mut HashMap<String, ControllerStats>,
     pod_usage_map: HashMap<String, Value>,
     extended_pod_stats: &mut Vec<ExtendedPodStats>,
+    node_pod_counts_map: &mut HashMap<String, NodePodStats>,
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>
 ) {
     for pod in pods {
         if pod.spec.is_none() || pod.status.is_none() {
@@ -133,6 +146,14 @@ fn process_pods(
         }
 
         let translated_pod = PodStats::new(&pod);
+
+        let node = translated_pod.node.clone();
+        let phase= translated_pod.phase.clone();
+
+        let node_pod_stat = node_pod_counts_map
+            .entry(node.clone())
+            .or_insert(NodePodStats::new());     
+        node_pod_stat.inc(&phase);
 
         let controller_key = format!(
             "{}.{}.{}",
@@ -184,14 +205,7 @@ fn process_pods(
             }
         }
 
-        let default_container_vec = Vec::new();
-        for container in spec.containers.iter().chain(
-            (&spec)
-                .init_containers
-                .as_ref()
-                .unwrap_or_else(|| &default_container_vec)
-                .iter(),
-        ) {
+        for container in spec.containers.iter() {
             if container.name.is_empty() || container.image.is_none() || container.resources.is_none()
             {
                 continue;
@@ -203,31 +217,92 @@ fn process_pods(
                 continue;
             }
 
-            let usage = pod_usage_map.get(&container.name);
-
-            if usage.is_some() {
-                let translated_container = ContainerStats::new(
-                    &container,
-                    container_status.as_ref().unwrap(),
-                    container_status.unwrap().state.as_ref().unwrap(),
-                    usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
-                    usage.unwrap()["memory"].as_str().unwrap_or_else(|| "")
-                );
-
-                extended_pod_stats.push(ExtendedPodStats::new(translated_pod.clone(), translated_container));
-            }
+            populate_container(&pod_usage_map, &container, container_status, node_container_counts_map, &node, extended_pod_stats, &translated_pod, false);
         }
+
+        let default_container_vec: Vec<Container> = Vec::new();
+        for init_container in spec.init_containers.as_ref().unwrap_or_else(|| &default_container_vec) {
+            if init_container.name.is_empty() || init_container.image.is_none() || init_container.resources.is_none()
+            {
+                continue;
+            }
+
+            let container_status = container_status_map.get(&init_container.name);
+
+            if container_status.is_none() {
+                continue;
+            }
+
+            populate_container(&pod_usage_map, &init_container, container_status, node_container_counts_map, &node, extended_pod_stats, &translated_pod, true);
+        }
+        
     }
 }
 
-fn process_nodes(nodes: ObjectList<Node>, node_usage_map: HashMap<String, Value>) {
+fn populate_container(
+    pod_usage_map: &HashMap<String, Value>, 
+    container: &Container, 
+    container_status: Option<&ContainerStatus>, 
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>, 
+    node: &String, 
+    extended_pod_stats: &mut Vec<ExtendedPodStats>, 
+    translated_pod: &PodStats,
+    init: bool
+) {
+    let usage = pod_usage_map.get(&container.name);
+    if usage.is_some() {
+        let translated_container = ContainerStats::new(
+            &container,
+            container_status.as_ref().unwrap(),
+            container_status.unwrap().state.as_ref().unwrap(),
+            usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
+            usage.unwrap()["memory"].as_str().unwrap_or_else(|| "")
+        );
+
+        let node_container_stat = node_container_counts_map
+            .entry(node.clone())
+            .or_insert(NodeContainerStats::new());     
+
+        node_container_stat.inc(&translated_container.state, translated_container.ready, init);
+
+        extended_pod_stats.push(ExtendedPodStats::new(translated_pod.clone(), translated_container));
+    }
+}
+
+fn process_nodes(
+    nodes: ObjectList<Node>, 
+    node_usage_map: HashMap<String, Value>,
+    output_node_vec: &mut Vec<NodeStats>,
+    node_pod_counts_map: &mut HashMap<String, NodePodStats>,
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>) {
+
     for node in nodes {
     
         if node.spec.is_none() || node.status.is_none() || node.metadata.name.is_none() {
             continue;
         }
 
-        let translated_node = NodeStats::new(&node);
+        let name = node.metadata.name.as_ref().unwrap();
+
+        let default_node_container_stats = NodeContainerStats::new();
+        let default_pod_container_stats = NodePodStats::new();
+
+        let node_container_stats = node_container_counts_map.get(name).unwrap_or_else(|| &default_node_container_stats);
+        let node_pod_stats = node_pod_counts_map.get(name).unwrap_or_else(|| &default_pod_container_stats);
+
+        let usage = node_usage_map.get(name);
+        if usage.is_some() {
+            let translated_node = NodeStats::new(
+                &node, 
+                &node_pod_stats, 
+                &node_container_stats,
+                usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
+                usage.unwrap()["memory"].as_str().unwrap_or_else(|| "")
+            );
+
+            output_node_vec.push(translated_node);
+        }
+
     }
 
 }

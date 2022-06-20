@@ -1,51 +1,82 @@
 use chrono::Local;
 use k8s_openapi::api::core::v1::Node;
+use serde::{Deserialize, Serialize};
 
+use super::{pod_stats::NodePodStats, container_stats::NodeContainerStats, helpers::{convert_memory_usage_to_bytes, convert_cpu_usage_to_milli}};
+
+#[derive(Serialize, Deserialize)]
 pub struct NodeStats {
     pub resource: String,
     pub r#type: String,
     pub age: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub container_runtime_version: String,
-    pub containers_init: i16,
-    pub containers_ready: i16,
-    pub containers_running: i16,
-    pub containers_terminated: i16,
-    pub containers_total: i16,
-    pub containers_waiting: i16, 
-    pub cpu_allocatable: i32,
-    pub cpu_capacity: i32,
-    pub cpu_usage: String,
+    pub containers_init: i32,
+    pub containers_ready: i32,
+    pub containers_running: i32,
+    pub containers_terminated: i32,
+    pub containers_total: i32,
+    pub containers_waiting: i32, 
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub cpu_allocatable: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub cpu_capacity: i64,
+    pub cpu_usage: i32,
     pub created: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub ip_external: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub ip: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub kernel_version: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub kubelet_version: String,
-    pub memory_allocatable: i32,
-    pub memory_capacity: i32,
-    pub memory_usage: String,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub memory_allocatable: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub memory_capacity: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub pods_allocatable: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
+    pub pods_capacity: i64,
+    pub memory_usage: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub node: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub os_image: String,
-    pub pods_failed: i16,
-    pub pods_pending: i16,
-    pub pods_running: i16,
-    pub pods_succeeded: i16,
-    pub pods_total: i16,
-    pub pods_unknown: i16,
+    pub pods_failed: i32,
+    pub pods_pending: i32,
+    pub pods_running: i32,
+    pub pods_succeeded: i32,
+    pub pods_total: i32,
+    pub pods_unknown: i32,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_heartbeat_age: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_heartbeat_time: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub ready_message: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub ready_status: String,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_transition_age: i64,
+    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_transition_time: i64,
     pub ready: bool,
-    pub unschedulable: bool
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub unschedulable: Option<bool>
 }
 
 impl NodeStats {
 
-    pub fn new(n: &Node) -> NodeStats {
+    pub fn new(n: &Node, n_pods: &NodePodStats, n_containers: &NodeContainerStats, raw_cpu_usage: &str, raw_memory_usage: &str) -> NodeStats {
 
         let mut age = 0;
+
+
+        let memory_usage = convert_memory_usage_to_bytes(&raw_memory_usage);
+        let cpu_usage = convert_cpu_usage_to_milli(&raw_cpu_usage);
 
         let mut container_runtime_version = String::new();
         let mut ip = String::new();
@@ -61,6 +92,8 @@ impl NodeStats {
         let mut cpu_capacity = -1;
         let mut memory_allocatable = -1;
         let mut memory_capacity = -1;
+        let mut pods_allocatable = -1;
+        let mut pods_capacity = -1;
         let mut created: i64 = 0;
         let mut ready_heartbeat_age: i64 = 0;
         let mut ready_heartbeat_time: i64 = 0;
@@ -68,31 +101,30 @@ impl NodeStats {
         let mut ready_transition_time: i64 = 0;
 
         let mut ready: bool = false;
-        let mut unschedulable: bool = false;
+        let mut unschedulable: Option<bool> = None;
 
         let status = &n.status;
         let spec = &n.spec;
 
-        let mut containers_init = 0;
-        let mut containers_ready = 0;
-        let mut containers_running = 0;
-        let mut containers_terminated = 0;
-        let mut containers_total = 0;
-        let mut containers_waiting = 0;
+        let containers_init = 0;
+        let containers_ready = n_containers.containers_ready;
+        let containers_running = n_containers.containers_running;
+        let containers_terminated = n_containers.containers_terminated;
+        let containers_total = n_containers.containers_total;
+        let containers_waiting = n_containers.containers_waiting;
 
-        let mut pods_failed = 0;
-        let mut pods_pending = 0;
-        let mut pods_running = 0;
-        let mut pods_succeeded = 0;
-        let mut pods_total = 0;
-        let mut pods_unknown = 0;
-
+        let pods_failed = n_pods.pods_failed;
+        let pods_pending = n_pods.pods_pending;
+        let pods_running = n_pods.pods_running;
+        let pods_succeeded = n_pods.pods_succeeded;
+        let pods_total = n_pods.pods_total;
+        let pods_unknown = n_pods.pods_unknown;
 
         match spec {
             
             Some(spec) => {
                 if spec.unschedulable.is_some() {
-                    unschedulable = spec.unschedulable.as_ref().unwrap().clone();
+                    unschedulable = Some(spec.unschedulable.as_ref().unwrap().clone());
                 }
 
             }
@@ -113,27 +145,39 @@ impl NodeStats {
                     let allocatable = status.allocatable.as_ref().unwrap();
                     let cpu_quantity = allocatable.get("cpu");
                     let memory_quantity = allocatable.get("memory");
+                    let pods_quantity = allocatable.get("pods");
 
                     if cpu_quantity.is_some() {
-                        cpu_allocatable = cpu_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
+                        cpu_allocatable = cpu_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1) * 1000;
                     }
 
                     if memory_quantity.is_some() {
-                        memory_allocatable = memory_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
+                        let memory_allocatable_str = memory_quantity.as_ref().unwrap().0.as_str();
+                        memory_allocatable = convert_memory_usage_to_bytes(memory_allocatable_str);
+                    }
+
+                    if pods_quantity.is_some() {
+                        pods_allocatable = pods_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
                     }
                 }
 
                 if status.capacity.is_some() {
-                    let allocatable = status.allocatable.as_ref().unwrap();
-                    let cpu_quantity = allocatable.get("cpu");
-                    let memory_quantity = allocatable.get("memory");
+                    let capacity = status.capacity.as_ref().unwrap();
+                    let cpu_quantity = capacity.get("cpu");
+                    let memory_quantity = capacity.get("memory");
+                    let pods_quantity = capacity.get("pods");
 
                     if cpu_quantity.is_some() {
-                        cpu_capacity = cpu_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
+                        cpu_capacity = cpu_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1) * 1000;
                     }
 
                     if memory_quantity.is_some() {
-                        memory_capacity = memory_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
+                        let memory_capacity_str = memory_quantity.as_ref().unwrap().0.as_str();
+                        memory_capacity = convert_memory_usage_to_bytes(memory_capacity_str);
+                    }
+
+                    if pods_quantity.is_some() {
+                        pods_capacity = pods_quantity.as_ref().unwrap().0.parse().unwrap_or_else(|_| -1);
                     }
                 }
 
@@ -199,7 +243,7 @@ impl NodeStats {
             containers_waiting,
             cpu_allocatable,
             cpu_capacity,
-            cpu_usage: String::new(),
+            cpu_usage,
             created,
             ip_external,
             ip,
@@ -207,7 +251,7 @@ impl NodeStats {
             kubelet_version,
             memory_allocatable,
             memory_capacity,
-            memory_usage: String::new(),
+            memory_usage,
             node,
             os_image,
             pods_failed,
@@ -224,12 +268,15 @@ impl NodeStats {
             ready_transition_time,
             ready,
             unschedulable,
+            pods_allocatable,
+            pods_capacity,
             resource: "node".to_string(),
             r#type: "metric".to_string()
         }
     }
 }
 
-fn skip_serializing(n: &i32) -> bool {
+
+fn skip_serializing_int64(n: &i64) -> bool {
     n.is_negative()
 }
