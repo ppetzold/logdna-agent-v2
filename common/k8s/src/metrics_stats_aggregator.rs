@@ -9,15 +9,15 @@ use kube::{
 };
 use serde_json::Value;
 
-use std::{collections::HashMap, any::Any};
+use std::{collections::HashMap};
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::kube_stats::{
-    container_stats::{ContainerStats, NodeContainerStats, self},
+    container_stats::{ContainerStats, NodeContainerStats},
     controller_stats::ControllerStats,
     extended_pod_stats::{ExtendedPodStats},
-    pod_stats::{PodStats, NodePodStats, self}, node_stats::NodeStats,
+    pod_stats::{PodStats, NodePodStats}, node_stats::NodeStats,
 };
 
 pub struct MetricsServerAggregator {
@@ -31,11 +31,11 @@ impl MetricsServerAggregator {
 
     pub async fn start_metrics_call_task(self) {
         loop {
-            let result = self::gather_reporter_info(self.client.clone()).await;
+            let result = self::process_reporter_info(self.client.clone()).await;
 
             match result {
                 Ok(_) => {},
-                Err(_) => {error!("Failed To Gather Metrics Server Info")},
+                Err(e) => {error!("Failed To Gather Metrics Server Info {}", e)},
             }
 
             sleep(Duration::from_millis(30000)).await;
@@ -43,17 +43,15 @@ impl MetricsServerAggregator {
     }
 }
 
-async fn gather_reporter_info(client: Client) -> anyhow::Result<()> {
+async fn process_reporter_info(client: Client) -> anyhow::Result<()> {
     let pods = self::get_all_pods(client.clone()).await?;
     let nodes = self::get_all_nodes(client.clone()).await?;
-
     let pod_metrics = self::call_metric_api(&"PodMetrics", client.clone()).await?;
     let node_metrics = self::call_metric_api(&"NodeMetrics", client.clone()).await?;
 
     let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
     let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();
     let mut node_container_counts_map: HashMap<String, NodeContainerStats> = HashMap::new();
-
     let mut pod_usage_map: HashMap<String, Value> = HashMap::new();
     let mut node_usage_map: HashMap<String, Value> = HashMap::new();
 
@@ -111,17 +109,17 @@ fn print_pods(extended_pod_stats: Vec<ExtendedPodStats>, controller_map: HashMap
 
         let controller_stats = controller_map.get(&controller_key);
 
-        //unwrap gaurd
-        translated_pod_container.controller_stats.copy_stats(controller_stats.unwrap());
+        if controller_stats.is_some() {
+            translated_pod_container.controller_stats.copy_stats(controller_stats.unwrap());
+        }
 
-        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&translated_pod_container).unwrap()); // wrap in kube {}
+        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| "".to_string()));
     }
 }
 
 fn print_nodes(nodes: Vec<NodeStats>) {
     for node in nodes {
-
-        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&node).unwrap()); // wrap in kube {}
+        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&node).unwrap_or_else(|_| "".to_string()));
     }
 }
 

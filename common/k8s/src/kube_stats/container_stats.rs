@@ -2,7 +2,9 @@ use chrono::{Local};
 use k8s_openapi::{api::{core::v1::{Container, ContainerStatus, ContainerState}}};
 use serde::{Serialize, Deserialize};
 
-use super::helpers::{convert_memory_usage_to_bytes, convert_cpu_usage_to_milli};
+use super::helpers::{
+    convert_memory_usage_to_bytes, convert_cpu_usage_to_milli, skip_serializing_int64, skip_serializing_int32
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct ContainerStats {
@@ -47,7 +49,7 @@ impl ContainerStats {
 
         let mut image = String::new();
         let mut image_tag = String::new();
-        let mut state = String::new();
+        let state;
         let mut last_state = String::new();
         let mut last_reason = String::new();
         let mut last_started = String::new();
@@ -81,7 +83,7 @@ impl ContainerStats {
 
         if running.is_some() {
             state = "Running".to_string();
-            let started_at = c_state.running.as_ref().unwrap().started_at.as_ref().unwrap().0;
+            let started_at = c_state.running.as_ref().unwrap().started_at.as_ref().unwrap().0; // TODO need a default 
             container_age = Local::now().signed_duration_since(started_at).num_milliseconds();
         }
         else if terminated.is_some() {
@@ -100,14 +102,29 @@ impl ContainerStats {
 
             if last_running.is_some() {
                 last_state = "Running".to_string();
-                last_started = last_running.as_ref().unwrap().started_at.as_ref().unwrap().0.to_string();
+                let last_running_ref = last_running.as_ref().unwrap();
+
+                if last_running_ref.started_at.is_some() {
+                    last_started = last_running_ref.started_at.as_ref().unwrap().0.to_string(); 
+                } 
             }
             else if last_terminated.is_some() {
                 last_state = "Terminated".to_string();
-                last_reason = last_terminated.as_ref().unwrap().reason.as_ref().unwrap().to_string();
-                last_finished =  last_terminated.as_ref().unwrap().finished_at.as_ref().unwrap().0.to_string();
-                last_started = last_terminated.as_ref().unwrap().started_at.as_ref().unwrap().0.to_string();
-            }
+                 
+                let last_terminated_ref = last_terminated.as_ref().unwrap();
+
+                if last_terminated_ref.reason.is_some() {
+                    last_reason = last_terminated_ref.reason.as_ref().unwrap().to_string();
+                }
+
+                if last_terminated_ref.finished_at.is_some() {
+                    last_finished = last_terminated_ref.finished_at.as_ref().unwrap().0.to_string();
+                }
+
+                if last_terminated_ref.started_at.is_some() {
+                    last_started = last_terminated_ref.started_at.as_ref().unwrap().0.to_string(); 
+                }                
+            } 
             else {
                 last_state = "Waiting".to_string()
             }
@@ -177,14 +194,6 @@ impl ContainerStats {
             state
         }
     }
-}
-
-fn skip_serializing_int32(n: &i32) -> bool {
-    n.is_negative()
-}
-
-fn skip_serializing_int64(n: &i64) -> bool {
-    n.is_negative()
 }
 
 #[derive(Debug)]

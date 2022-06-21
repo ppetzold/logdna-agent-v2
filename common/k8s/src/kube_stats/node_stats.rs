@@ -2,7 +2,10 @@ use chrono::Local;
 use k8s_openapi::api::core::v1::Node;
 use serde::{Deserialize, Serialize};
 
-use super::{pod_stats::NodePodStats, container_stats::NodeContainerStats, helpers::{convert_memory_usage_to_bytes, convert_cpu_usage_to_milli}};
+use super::{
+    pod_stats::NodePodStats, container_stats::NodeContainerStats, 
+    helpers::{convert_memory_usage_to_bytes, convert_cpu_usage_to_milli, skip_serializing_int64}
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct NodeStats {
@@ -62,18 +65,18 @@ pub struct NodeStats {
     pub ready_transition_age: i64,
     #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_transition_time: i64,
-    pub ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub ready: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
     pub unschedulable: Option<bool>
 }
 
 impl NodeStats {
-
     pub fn new(n: &Node, n_pods: &NodePodStats, n_containers: &NodeContainerStats, raw_cpu_usage: &str, raw_memory_usage: &str) -> NodeStats {
 
         let mut age = 0;
-
 
         let memory_usage = convert_memory_usage_to_bytes(&raw_memory_usage);
         let cpu_usage = convert_cpu_usage_to_milli(&raw_cpu_usage);
@@ -100,7 +103,7 @@ impl NodeStats {
         let mut ready_transition_age: i64 = 0;
         let mut ready_transition_time: i64 = 0;
 
-        let mut ready: bool = false;
+        let mut ready: Option<bool> = None;
         let mut unschedulable: Option<bool> = None;
 
         let status = &n.status;
@@ -213,7 +216,7 @@ impl NodeStats {
                                 ready_transition_time = transition.0.timestamp();
                             }
 
-                            ready = condition.status.to_lowercase() == "true";
+                            ready = Some(condition.status.to_lowercase() == "true");
                 
                         }
                     }
@@ -274,9 +277,4 @@ impl NodeStats {
             r#type: "metric".to_string()
         }
     }
-}
-
-
-fn skip_serializing_int64(n: &i64) -> bool {
-    n.is_negative()
 }

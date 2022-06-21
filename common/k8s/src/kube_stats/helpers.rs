@@ -80,3 +80,11 @@ pub fn convert_memory_usage_to_bytes(memory: &str) -> i64{
     
     return parsed_value * multiplier;
 }
+
+pub fn skip_serializing_int64(n: &i64) -> bool {
+    n.is_negative()
+}
+
+pub fn skip_serializing_int32(n: &i32) -> bool {
+    n.is_negative()
+}

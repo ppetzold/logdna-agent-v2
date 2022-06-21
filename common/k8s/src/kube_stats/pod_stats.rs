@@ -30,7 +30,7 @@ pub struct PodStats {
 }
 
 
-impl PodStats {
+impl PodStats { 
     pub fn new(p: &Pod) -> Self {
         let details = get_controller_details(&p.metadata.owner_references);
 
