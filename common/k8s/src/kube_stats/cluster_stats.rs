@@ -24,11 +24,10 @@ pub struct ClusterStats {
     pods_running: i16,
     pods_succeeded: i16,
     pods_unknown: i16,
-    pods_total: i16
+    pods_total: i16,
 }
 
 impl ClusterStats {
-
     pub fn build(p: Pod) -> ClusterStats {
         ClusterStats {
             containers_init: todo!(),

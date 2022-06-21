@@ -41,11 +41,53 @@ pub struct ContainerStats {
 }
 
 impl ContainerStats {
-    pub fn new(c: &Container, c_status: &ContainerStatus, c_state: &ContainerState, raw_cpu_usage: &str, raw_memory_usage: &str) -> ContainerStats {
-        let container = c.name.clone();
+    pub fn builder<'a>(
+        c: &'a Container, 
+        c_status: &'a ContainerStatus, 
+        c_state: &'a ContainerState, 
+        raw_cpu_usage: &'a str, 
+        raw_memory_usage: &'a str
+    ) -> ContainerStatsBuilder<'a> {
+        ContainerStatsBuilder {
+            c,
+            c_status,
+            c_state,
+            raw_cpu_usage,
+            raw_memory_usage
+        }
+    }
+}
 
-        let memory_usage = convert_memory_usage_to_bytes(&raw_memory_usage);
-        let cpu_usage = convert_cpu_usage_to_milli(&raw_cpu_usage);
+pub struct ContainerStatsBuilder<'a> {
+    c: &'a Container, 
+    c_status: &'a ContainerStatus, 
+    c_state: &'a ContainerState, 
+    raw_cpu_usage: &'a str, 
+    raw_memory_usage: &'a str
+}
+
+impl ContainerStatsBuilder<'_> {
+    pub fn new<'a>(
+        c: &'a Container, 
+        c_status: &'a ContainerStatus, 
+        c_state: &'a ContainerState, 
+        raw_cpu_usage: &'a str, 
+        raw_memory_usage: &'a str
+    ) -> ContainerStatsBuilder<'a> {
+        ContainerStatsBuilder {
+            c,
+            c_status,
+            c_state,
+            raw_cpu_usage,
+            raw_memory_usage
+        }
+    }
+
+    pub fn build(self) -> ContainerStats {
+        let container = self.c.name.clone();
+
+        let memory_usage = convert_memory_usage_to_bytes(&self.raw_memory_usage);
+        let cpu_usage = convert_cpu_usage_to_milli(&self.raw_cpu_usage);
 
         let mut image = String::new();
         let mut image_tag = String::new();
@@ -62,13 +104,13 @@ impl ContainerStats {
 
         let mut container_age: i64 = 0;
 
-        let restarts =  c_status.restart_count;
-        let ready = c_status.ready;
-        let started = c_status.started.unwrap_or_else(|| false);
+        let restarts =  self.c_status.restart_count;
+        let ready = self.c_status.ready;
+        let started = self.c_status.started.unwrap_or_else(|| false);
 
-        if c.image.is_some()
+        if self.c.image.is_some()
         {
-            let container_image = c.image.clone().unwrap();
+            let container_image = self.c.image.clone().unwrap();
 
             let split: Vec<&str> = container_image.split(":").collect();
 
@@ -78,12 +120,12 @@ impl ContainerStats {
             }
         }
 
-        let running = c_state.running.as_ref();
-        let terminated = c_state.terminated.as_ref();
+        let running = self.c_state.running.as_ref();
+        let terminated = self.c_state.terminated.as_ref();
 
         if running.is_some() {
             state = "Running".to_string();
-            let started_at = c_state.running.as_ref().unwrap().started_at.as_ref().unwrap().0; // TODO need a default 
+            let started_at = self.c_state.running.as_ref().unwrap().started_at.as_ref().unwrap().0; // TODO need a default 
             container_age = Local::now().signed_duration_since(started_at).num_milliseconds();
         }
         else if terminated.is_some() {
@@ -93,12 +135,12 @@ impl ContainerStats {
             state = "Waiting".to_string()
         }
 
-        let last_status_state = c_status.last_state.as_ref();
+        let last_status_state = self.c_status.last_state.as_ref();
 
         if last_status_state.is_some() {
 
-            let last_running = c_state.running.as_ref();
-            let last_terminated = c_state.terminated.as_ref();    
+            let last_running = self.c_state.running.as_ref();
+            let last_terminated = self.c_state.terminated.as_ref();    
 
             if last_running.is_some() {
                 last_state = "Running".to_string();
@@ -139,7 +181,7 @@ impl ContainerStats {
 
         }
 
-        let resources = c.resources.as_ref();
+        let resources = self.c.resources.as_ref();
 
         if resources.is_some() {
             let limits = resources.unwrap().limits.as_ref();
@@ -193,57 +235,5 @@ impl ContainerStats {
             started,
             state
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct NodeContainerStats {
-    pub containers_waiting: i32,
-    pub containers_total: i32,
-    pub containers_terminated: i32,
-    pub containers_running: i32,
-    pub containers_ready: i32,
-    pub containers_init: i32
-}
-
-impl NodeContainerStats {
-    pub fn new() -> Self {
-
-        NodeContainerStats { 
-            containers_waiting: 0, 
-            containers_total: 0, 
-            containers_terminated: 0, 
-            containers_running: 0, 
-            containers_ready: 0,
-            containers_init: 0
-        }
-    }
-
-    pub fn inc(&mut self, state: &str, ready: bool, init: bool) {
-
-        if init {
-            self.containers_init += 1;
-        }
-
-        match state.to_lowercase().as_str() {
-            "waiting" => {
-                self.containers_waiting += 1;
-                self.containers_total += 1;
-            }
-            "terminated" => {
-                self.containers_terminated += 1;
-                self.containers_total += 1;
-            }
-            "running" => {
-                self.containers_running += 1;
-                self.containers_total += 1;
-
-                if ready {
-                    self.containers_ready += 1;
-                }
-            }
-            _ => {}
-        }
-
     }
 }

@@ -1,5 +1,5 @@
-use chrono::{Utc, DateTime, NaiveDate, Local};
-use k8s_openapi::{api::core::v1::{Pod,}, apimachinery::pkg::apis::meta::v1::{OwnerReference, Time}};
+use chrono::{Local};
+use k8s_openapi::{api::core::v1::{Pod,}, apimachinery::pkg::apis::meta::v1::{OwnerReference}};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -29,16 +29,34 @@ pub struct PodStats {
     pub r#type: String,
 }
 
-
 impl PodStats { 
-    pub fn new(p: &Pod) -> Self {
-        let details = get_controller_details(&p.metadata.owner_references);
+    pub fn builder<'a>(p: &'a Pod,) -> PodStatsBuilder<'a> {
+    
+        PodStatsBuilder { p }
+    }
+}
+
+pub struct PodStatsBuilder<'a> {
+    p: &'a Pod
+}
+
+impl PodStatsBuilder<'_> {
+    pub fn new<'a>(
+        p: &Pod
+    ) -> PodStatsBuilder {
+        PodStatsBuilder {
+            p
+        }
+    }
+
+    pub fn build(self) -> PodStats {
+        let details = get_controller_details(&self.p.metadata.owner_references);
 
         let controller = details.0;
         let controller_type = details.1;
 
-        let spec = &p.spec;
-        let status = &p.status;
+        let spec = &self.p.spec;
+        let status = &self.p.status;
 
         let mut created: i64 = 0;
         let mut priority_class = String::new();
@@ -50,8 +68,8 @@ impl PodStats {
         let mut qos_class = String::new();
         let mut pod_age = 0;
 
-        let namespace = p.metadata.namespace.clone().unwrap_or_else(|| "".to_string());
-        let pod = p.metadata.name.clone().unwrap_or("".to_string());
+        let namespace = self.p.metadata.namespace.clone().unwrap_or_else(|| "".to_string());
+        let pod = self.p.metadata.name.clone().unwrap_or("".to_string());
 
         match spec {
             Some(spec) => {
@@ -113,7 +131,6 @@ impl PodStats {
     }
 }
 
-
 fn get_controller_details(owners: &Option<Vec<OwnerReference>>) -> (String, String)
 {
     if owners.is_some() {
@@ -126,56 +143,4 @@ fn get_controller_details(owners: &Option<Vec<OwnerReference>>) -> (String, Stri
     }
 
     return ("".to_string(), "".to_string());
-}
-
-#[derive(Debug)]
-pub struct NodePodStats {
-    pub pods_failed: i32,
-    pub pods_pending: i32,
-    pub pods_running: i32,
-    pub pods_succeeded: i32,
-    pub pods_unknown: i32,
-    pub pods_total: i32
-}
-
-impl NodePodStats {
-    pub fn new() -> Self {
-
-        NodePodStats { 
-            pods_failed: 0, 
-            pods_pending: 0, 
-            pods_running: 0, 
-            pods_succeeded: 0, 
-            pods_unknown: 0,
-            pods_total: 0
-        }
-    }
-
-    pub fn inc(&mut self, phase: &str) {
-
-        self.pods_total += 1;
-
-        match phase.to_lowercase().as_str() {
-            "failed" => {
-                self.pods_failed += 1;
-            }
-            "pending" => {
-                self.pods_pending += 1;
-            }
-            "running" => {
-                self.pods_running += 1;
-            }
-            "succeeded" => {
-                self.pods_succeeded += 1;
-            }
-            "unknown" => {
-                self.pods_unknown += 1;
-            }
-            _ => {
-                self.pods_unknown += 1;
-            }
-        }
-
-    }
-
 }

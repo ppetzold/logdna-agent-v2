@@ -1,7 +1,7 @@
-use anyhow::{Result};
+use anyhow::Result;
 use core::result::Result::Ok;
 
-use k8s_openapi::api::core::v1::{Node, Pod, Container, ContainerStatus};
+use k8s_openapi::api::core::v1::{Container, ContainerStatus, Node, Pod};
 use kube::{
     api::{Api, DynamicObject, GroupVersionKind, ListParams, ObjectList},
     discovery::{self},
@@ -9,15 +9,16 @@ use kube::{
 };
 use serde_json::Value;
 
-use std::{collections::HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::kube_stats::{
-    container_stats::{ContainerStats, NodeContainerStats},
+    container_stats::ContainerStats,
     controller_stats::ControllerStats,
-    extended_pod_stats::{ExtendedPodStats},
-    pod_stats::{PodStats, NodePodStats}, node_stats::NodeStats,
+    extended_pod_stats::ExtendedPodStats,
+    node_stats::{NodeContainerStats, NodePodStats, NodeStats},
+    pod_stats::PodStats,
 };
 
 pub struct MetricsServerAggregator {
@@ -34,8 +35,10 @@ impl MetricsServerAggregator {
             let result = self::process_reporter_info(self.client.clone()).await;
 
             match result {
-                Ok(_) => {},
-                Err(e) => {error!("Failed To Gather Metrics Server Info {}", e)},
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed To Gather Metrics Server Info {}", e)
+                }
             }
 
             sleep(Duration::from_millis(30000)).await;
@@ -59,46 +62,72 @@ async fn process_reporter_info(client: Client) -> anyhow::Result<()> {
     let mut node_stats: Vec<NodeStats> = Vec::new();
 
     build_pod_metric_map(pod_metrics, &mut pod_usage_map);
-    process_pods(pods, &mut controller_map, pod_usage_map, &mut extended_pod_stats, &mut node_pod_counts_map, &mut node_container_counts_map);
+    process_pods(
+        pods,
+        &mut controller_map,
+        pod_usage_map,
+        &mut extended_pod_stats,
+        &mut node_pod_counts_map,
+        &mut node_container_counts_map,
+    );
     print_pods(extended_pod_stats, controller_map);
 
     build_node_metric_map(node_metrics, &mut node_usage_map);
-    process_nodes(nodes, node_usage_map, &mut node_stats, &mut node_pod_counts_map, &mut node_container_counts_map);
+    process_nodes(
+        nodes,
+        node_usage_map,
+        &mut node_stats,
+        &mut node_pod_counts_map,
+        &mut node_container_counts_map,
+    );
     print_nodes(node_stats);
 
     Ok(())
 }
 
-fn build_pod_metric_map(pod_metrics: ObjectList<DynamicObject>, pod_usage_map: &mut HashMap<String, Value>) {
+fn build_pod_metric_map(
+    pod_metrics: ObjectList<DynamicObject>,
+    pod_usage_map: &mut HashMap<String, Value>,
+) {
     for pod_metric in pod_metrics {
         let containers = pod_metric.data["containers"].as_array();
 
-        if containers.is_some()
-        {
+        if containers.is_some() {
             for container in containers.unwrap() {
-
                 let container_name = container["name"].as_str();
 
                 if container_name.is_none() {
                     continue;
                 }
 
-                pod_usage_map.insert(container_name.unwrap().to_string(), container["usage"].clone());
+                pod_usage_map.insert(
+                    container_name.unwrap().to_string(),
+                    container["usage"].clone(),
+                );
             }
         }
     }
 }
 
-fn build_node_metric_map(node_metrics: ObjectList<DynamicObject>, node_usage_map: &mut HashMap<String, Value>) {
+fn build_node_metric_map(
+    node_metrics: ObjectList<DynamicObject>,
+    node_usage_map: &mut HashMap<String, Value>,
+) {
     for node_metric in node_metrics {
-        let node_name = node_metric.metadata.name.unwrap_or_else(|| "NONE".to_string());
+        let node_name = node_metric
+            .metadata
+            .name
+            .unwrap_or_else(|| "NONE".to_string());
         let usage = &node_metric.data["usage"];
 
         node_usage_map.insert(node_name, usage.clone());
     }
 }
 
-fn print_pods(extended_pod_stats: Vec<ExtendedPodStats>, controller_map: HashMap<String, ControllerStats>) {
+fn print_pods(
+    extended_pod_stats: Vec<ExtendedPodStats>,
+    controller_map: HashMap<String, ControllerStats>,
+) {
     for mut translated_pod_container in extended_pod_stats {
         let controller_key = format!(
             "{}.{}.{}",
@@ -110,16 +139,24 @@ fn print_pods(extended_pod_stats: Vec<ExtendedPodStats>, controller_map: HashMap
         let controller_stats = controller_map.get(&controller_key);
 
         if controller_stats.is_some() {
-            translated_pod_container.controller_stats.copy_stats(controller_stats.unwrap());
+            translated_pod_container
+                .controller_stats
+                .copy_stats(controller_stats.unwrap());
         }
 
-        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| "".to_string()));
+        info!(
+            r#"{{"kube":{}}}"#,
+            serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| "".to_string())
+        );
     }
 }
 
 fn print_nodes(nodes: Vec<NodeStats>) {
     for node in nodes {
-        info!(r#"{{"kube":{}}}"#, serde_json::to_string(&node).unwrap_or_else(|_| "".to_string()));
+        info!(
+            r#"{{"kube":{}}}"#,
+            serde_json::to_string(&node).unwrap_or_else(|_| "".to_string())
+        );
     }
 }
 
@@ -129,7 +166,7 @@ fn process_pods(
     pod_usage_map: HashMap<String, Value>,
     extended_pod_stats: &mut Vec<ExtendedPodStats>,
     node_pod_counts_map: &mut HashMap<String, NodePodStats>,
-    node_container_counts_map: &mut HashMap<String, NodeContainerStats>
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>,
 ) {
     for pod in pods {
         if pod.spec.is_none() || pod.status.is_none() {
@@ -143,14 +180,14 @@ fn process_pods(
             continue;
         }
 
-        let translated_pod = PodStats::new(&pod);
+        let translated_pod = PodStats::builder(&pod).build();
 
         let node = translated_pod.node.clone();
-        let phase= translated_pod.phase.clone();
+        let phase = translated_pod.phase.clone();
 
         let node_pod_stat = node_pod_counts_map
             .entry(node.clone())
-            .or_insert(NodePodStats::new());     
+            .or_insert(NodePodStats::new());
         node_pod_stat.inc(&phase);
 
         let controller_key = format!(
@@ -204,7 +241,9 @@ fn process_pods(
         }
 
         for container in spec.containers.iter() {
-            if container.name.is_empty() || container.image.is_none() || container.resources.is_none()
+            if container.name.is_empty()
+                || container.image.is_none()
+                || container.resources.is_none()
             {
                 continue;
             }
@@ -215,12 +254,27 @@ fn process_pods(
                 continue;
             }
 
-            populate_container(&pod_usage_map, &container, container_status, node_container_counts_map, &node, extended_pod_stats, &translated_pod, false);
+            populate_container(
+                &pod_usage_map,
+                &container,
+                container_status,
+                node_container_counts_map,
+                &node,
+                extended_pod_stats,
+                &translated_pod,
+                false,
+            );
         }
 
         let default_container_vec: Vec<Container> = Vec::new();
-        for init_container in spec.init_containers.as_ref().unwrap_or_else(|| &default_container_vec) {
-            if init_container.name.is_empty() || init_container.image.is_none() || init_container.resources.is_none()
+        for init_container in spec
+            .init_containers
+            .as_ref()
+            .unwrap_or_else(|| &default_container_vec)
+        {
+            if init_container.name.is_empty()
+                || init_container.image.is_none()
+                || init_container.resources.is_none()
             {
                 continue;
             }
@@ -231,51 +285,66 @@ fn process_pods(
                 continue;
             }
 
-            populate_container(&pod_usage_map, &init_container, container_status, node_container_counts_map, &node, extended_pod_stats, &translated_pod, true);
+            populate_container(
+                &pod_usage_map,
+                &init_container,
+                container_status,
+                node_container_counts_map,
+                &node,
+                extended_pod_stats,
+                &translated_pod,
+                true,
+            );
         }
-        
     }
 }
 
 fn populate_container(
-    pod_usage_map: &HashMap<String, Value>, 
-    container: &Container, 
-    container_status: Option<&ContainerStatus>, 
-    node_container_counts_map: &mut HashMap<String, NodeContainerStats>, 
-    node: &String, 
-    extended_pod_stats: &mut Vec<ExtendedPodStats>, 
+    pod_usage_map: &HashMap<String, Value>,
+    container: &Container,
+    container_status: Option<&ContainerStatus>,
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>,
+    node: &String,
+    extended_pod_stats: &mut Vec<ExtendedPodStats>,
     translated_pod: &PodStats,
-    init: bool
+    init: bool,
 ) {
     let usage = pod_usage_map.get(&container.name);
     if usage.is_some() {
-        let translated_container = ContainerStats::new(
+        let translated_container = ContainerStats::builder(
             &container,
             container_status.as_ref().unwrap(),
             container_status.unwrap().state.as_ref().unwrap(),
             usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
-            usage.unwrap()["memory"].as_str().unwrap_or_else(|| "")
-        );
+            usage.unwrap()["memory"].as_str().unwrap_or_else(|| ""),
+        )
+        .build();
 
         let node_container_stat = node_container_counts_map
             .entry(node.clone())
-            .or_insert(NodeContainerStats::new());     
+            .or_insert(NodeContainerStats::new());
 
-        node_container_stat.inc(&translated_container.state, translated_container.ready, init);
+        node_container_stat.inc(
+            &translated_container.state,
+            translated_container.ready,
+            init,
+        );
 
-        extended_pod_stats.push(ExtendedPodStats::new(translated_pod.clone(), translated_container));
+        extended_pod_stats.push(ExtendedPodStats::new(
+            translated_pod.clone(),
+            translated_container,
+        ));
     }
 }
 
 fn process_nodes(
-    nodes: ObjectList<Node>, 
+    nodes: ObjectList<Node>,
     node_usage_map: HashMap<String, Value>,
     output_node_vec: &mut Vec<NodeStats>,
     node_pod_counts_map: &mut HashMap<String, NodePodStats>,
-    node_container_counts_map: &mut HashMap<String, NodeContainerStats>) {
-
+    node_container_counts_map: &mut HashMap<String, NodeContainerStats>,
+) {
     for node in nodes {
-    
         if node.spec.is_none() || node.status.is_none() || node.metadata.name.is_none() {
             continue;
         }
@@ -285,24 +354,27 @@ fn process_nodes(
         let default_node_container_stats = NodeContainerStats::new();
         let default_pod_container_stats = NodePodStats::new();
 
-        let node_container_stats = node_container_counts_map.get(name).unwrap_or_else(|| &default_node_container_stats);
-        let node_pod_stats = node_pod_counts_map.get(name).unwrap_or_else(|| &default_pod_container_stats);
+        let node_container_stats = node_container_counts_map
+            .get(name)
+            .unwrap_or_else(|| &default_node_container_stats);
+        let node_pod_stats = node_pod_counts_map
+            .get(name)
+            .unwrap_or_else(|| &default_pod_container_stats);
 
         let usage = node_usage_map.get(name);
         if usage.is_some() {
-            let translated_node = NodeStats::new(
-                &node, 
-                &node_pod_stats, 
+            let translated_node = NodeStats::builder(
+                &node,
+                &node_pod_stats,
                 &node_container_stats,
                 usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
-                usage.unwrap()["memory"].as_str().unwrap_or_else(|| "")
-            );
+                usage.unwrap()["memory"].as_str().unwrap_or_else(|| ""),
+            )
+            .build();
 
             output_node_vec.push(translated_node);
         }
-
     }
-
 }
 
 async fn call_metric_api(
@@ -318,7 +390,7 @@ async fn call_metric_api(
     items
 }
 
-async fn get_all_nodes(client: Client) -> Result<ObjectList<Node>, kube::Error>  {
+async fn get_all_nodes(client: Client) -> Result<ObjectList<Node>, kube::Error> {
     let api: Api<Node> = Api::all(client);
     let nodes = api.list(&ListParams::default()).await;
 
