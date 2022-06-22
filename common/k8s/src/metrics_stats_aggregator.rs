@@ -18,7 +18,7 @@ use crate::kube_stats::{
     controller_stats::ControllerStats,
     extended_pod_stats::ExtendedPodStats,
     node_stats::{NodeContainerStats, NodePodStats, NodeStats},
-    pod_stats::PodStats,
+    pod_stats::PodStats, cluster_stats::ClusterStats,
 };
 
 pub struct MetricsServerAggregator {
@@ -60,6 +60,8 @@ async fn process_reporter_info(client: Client) -> anyhow::Result<()> {
 
     let mut extended_pod_stats: Vec<ExtendedPodStats> = Vec::new();
     let mut node_stats: Vec<NodeStats> = Vec::new();
+
+    let mut cluster_stats = ClusterStats::new();
 
     build_pod_metric_map(pod_metrics, &mut pod_usage_map);
     process_pods(
