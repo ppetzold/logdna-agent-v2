@@ -146,7 +146,7 @@ fn print_pods(
 
         info!(
             r#"{{"kube":{}}}"#,
-            serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| "".to_string())
+            serde_json::to_string(&translated_pod_container).unwrap_or(String::from(""))
         );
     }
 }
@@ -155,7 +155,7 @@ fn print_nodes(nodes: Vec<NodeStats>) {
     for node in nodes {
         info!(
             r#"{{"kube":{}}}"#,
-            serde_json::to_string(&node).unwrap_or_else(|_| "".to_string())
+            serde_json::to_string(&node).unwrap_or(String::from(""))
         );
     }
 }
@@ -315,8 +315,8 @@ fn populate_container(
             &container,
             container_status.as_ref().unwrap(),
             container_status.unwrap().state.as_ref().unwrap(),
-            usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
-            usage.unwrap()["memory"].as_str().unwrap_or_else(|| ""),
+            usage.unwrap()["cpu"].as_str().unwrap_or(""),
+            usage.unwrap()["memory"].as_str().unwrap_or(""),
         )
         .build();
 
@@ -367,8 +367,8 @@ fn process_nodes(
                 &node,
                 &node_pod_stats,
                 &node_container_stats,
-                usage.unwrap()["cpu"].as_str().unwrap_or_else(|| ""),
-                usage.unwrap()["memory"].as_str().unwrap_or_else(|| ""),
+                usage.unwrap()["cpu"].as_str().unwrap_or(""),
+                usage.unwrap()["memory"].as_str().unwrap_or(""),
             )
             .build();
 

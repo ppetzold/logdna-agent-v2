@@ -3,7 +3,7 @@ use k8s_openapi::api::core::v1::Node;
 use serde::{Deserialize, Serialize};
 
 use super::helpers::{
-    convert_cpu_usage_to_milli, convert_memory_usage_to_bytes, skip_serializing_int64,
+    convert_cpu_usage_to_milli, convert_memory_usage_to_bytes
 };
 
 const CPU_MULTIPLIER: i64 = 1000;
@@ -21,10 +21,12 @@ pub struct NodeStats {
     pub containers_terminated: i32,
     pub containers_total: i32,
     pub containers_waiting: i32,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub cpu_allocatable: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub cpu_capacity: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub cpu_allocatable: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub cpu_capacity: Option<i64>,
     pub cpu_usage: i32,
     pub created: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -35,14 +37,18 @@ pub struct NodeStats {
     pub kernel_version: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub kubelet_version: String,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub memory_allocatable: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub memory_capacity: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub pods_allocatable: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
-    pub pods_capacity: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub memory_allocatable: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub memory_capacity: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub pods_allocatable: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub pods_capacity: Option<i64>,
     pub memory_usage: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub node: String,
@@ -54,17 +60,13 @@ pub struct NodeStats {
     pub pods_succeeded: i32,
     pub pods_total: i32,
     pub pods_unknown: i32,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_heartbeat_age: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_heartbeat_time: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub ready_message: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub ready_status: String,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_transition_age: i64,
-    #[serde(skip_serializing_if = "skip_serializing_int64")]
     pub ready_transition_time: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
@@ -101,7 +103,6 @@ pub struct NodeStatsBuilder<'a> {
 }
 
 impl NodeStatsBuilder<'_> {
-
     pub fn new<'a>(
         n: &'a Node,
         n_pods: &'a NodePodStats,
@@ -134,17 +135,18 @@ impl NodeStatsBuilder<'_> {
         let mut ready_message = String::new();
         let mut ready_status = String::new();
 
-        let mut cpu_allocatable = -1;
-        let mut cpu_capacity = -1;
-        let mut memory_allocatable = -1;
-        let mut memory_capacity = -1;
-        let mut pods_allocatable = -1;
-        let mut pods_capacity = -1;
-        let mut created: i64 = 0;
-        let mut ready_heartbeat_age: i64 = 0;
-        let mut ready_heartbeat_time: i64 = 0;
-        let mut ready_transition_age: i64 = 0;
-        let mut ready_transition_time: i64 = 0;
+        let mut cpu_allocatable: Option<i64> = None;
+        let mut cpu_capacity: Option<i64> = None;
+        let mut memory_allocatable: Option<i64> = None;
+        let mut memory_capacity: Option<i64> = None;
+        let mut pods_allocatable: Option<i64> = None;
+        let mut pods_capacity: Option<i64> = None;
+
+        let mut created = 0;
+        let mut ready_heartbeat_age = 0;
+        let mut ready_heartbeat_time = 0;
+        let mut ready_transition_age = 0;
+        let mut ready_transition_time = 0;
 
         let mut ready: Option<bool> = None;
         let mut unschedulable: Option<bool> = None;
@@ -184,6 +186,7 @@ impl NodeStatsBuilder<'_> {
                         .unwrap()
                         .container_runtime_version
                         .clone();
+
                     kernel_version = status.node_info.as_ref().unwrap().kernel_version.clone();
                     kubelet_version = status.node_info.as_ref().unwrap().kubelet_version.clone();
                     os_image = status.node_info.as_ref().unwrap().os_image.clone();
@@ -195,29 +198,21 @@ impl NodeStatsBuilder<'_> {
                     let memory_quantity = allocatable.get("memory");
                     let pods_quantity = allocatable.get("pods");
 
-                    if cpu_quantity.is_some() {
-                        cpu_allocatable = cpu_quantity
-                            .as_ref()
-                            .unwrap()
+                    cpu_allocatable = cpu_quantity.and_then(|cpu_quantity| {
+                        cpu_quantity
                             .0
-                            .parse()
-                            .unwrap_or_else(|_| -1)
-                            * CPU_MULTIPLIER;
-                    }
+                            .parse::<i64>()
+                            .map(|q| q * CPU_MULTIPLIER)
+                            .ok()
+                    });
 
-                    if memory_quantity.is_some() {
-                        let memory_allocatable_str = memory_quantity.as_ref().unwrap().0.as_str();
-                        memory_allocatable = convert_memory_usage_to_bytes(memory_allocatable_str);
-                    }
+                    memory_allocatable = memory_quantity
+                        .as_deref()
+                        .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                        .unwrap_or(None);
 
-                    if pods_quantity.is_some() {
-                        pods_allocatable = pods_quantity
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .parse()
-                            .unwrap_or_else(|_| -1);
-                    }
+                    pods_allocatable =
+                        pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
                 }
 
                 if status.capacity.is_some() {
@@ -226,29 +221,21 @@ impl NodeStatsBuilder<'_> {
                     let memory_quantity = capacity.get("memory");
                     let pods_quantity = capacity.get("pods");
 
-                    if cpu_quantity.is_some() {
-                        cpu_capacity = cpu_quantity
-                            .as_ref()
-                            .unwrap()
+                    cpu_capacity = cpu_quantity.and_then(|cpu_quantity| {
+                        cpu_quantity
                             .0
-                            .parse()
-                            .unwrap_or_else(|_| -1)
-                            * CPU_MULTIPLIER;
-                    }
+                            .parse::<i64>()
+                            .map(|q| q * CPU_MULTIPLIER)
+                            .ok()
+                    });
 
-                    if memory_quantity.is_some() {
-                        let memory_capacity_str = memory_quantity.as_ref().unwrap().0.as_str();
-                        memory_capacity = convert_memory_usage_to_bytes(memory_capacity_str);
-                    }
+                    memory_capacity = memory_quantity
+                        .as_deref()
+                        .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                        .unwrap_or(None);
 
-                    if pods_quantity.is_some() {
-                        pods_capacity = pods_quantity
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .parse()
-                            .unwrap_or_else(|_| -1);
-                    }
+                    pods_capacity =
+                        pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
                 }
 
                 if status.addresses.is_some() {
@@ -270,10 +257,13 @@ impl NodeStatsBuilder<'_> {
                         if condition.type_.to_lowercase() == "ready" {
                             if condition.last_heartbeat_time.is_some() {
                                 let heartbeat = condition.last_heartbeat_time.clone().unwrap();
+
                                 ready_heartbeat_age = Local::now()
                                     .signed_duration_since(heartbeat.0)
                                     .num_milliseconds();
-                                ready_heartbeat_time = heartbeat.0.timestamp();
+
+                                ready_heartbeat_time = heartbeat.0.timestamp_millis();
+
                                 ready_message = condition
                                     .message
                                     .as_ref()
@@ -281,12 +271,15 @@ impl NodeStatsBuilder<'_> {
                                     .clone();
                                 ready_status = condition.status.clone();
                             }
+
                             if condition.last_transition_time.is_some() {
                                 let transition = condition.last_transition_time.clone().unwrap();
+
                                 ready_transition_age = Local::now()
                                     .signed_duration_since(transition.0)
                                     .num_milliseconds();
-                                ready_transition_time = transition.0.timestamp();
+
+                                ready_transition_time = transition.0.timestamp_millis();
                             }
 
                             ready = Some(condition.status.to_lowercase() == "true");
@@ -302,7 +295,8 @@ impl NodeStatsBuilder<'_> {
             age = Local::now()
                 .signed_duration_since(node_created.0)
                 .num_milliseconds();
-            created = node_created.0.timestamp();
+
+            created = node_created.0.timestamp_millis();
         }
 
         if self.n.metadata.name.is_some() {

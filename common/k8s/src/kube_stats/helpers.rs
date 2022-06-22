@@ -1,7 +1,5 @@
-
-pub fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
-    if cpu.is_empty()
-    {
+pub fn convert_cpu_usage_to_milli(cpu: &str) -> i32 {
+    if cpu.is_empty() {
         return 0;
     }
 
@@ -13,7 +11,7 @@ pub fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
     }
 
     let parsed_value: f64 = value.parse().unwrap_or_else(|_| 0f64);
-    let mut denominator= 1000000.0;
+    let mut denominator = 1000000.0;
 
     if parsed_value < 1.0 || unit.is_empty() {
         return (parsed_value * 1000.0).ceil() as i32;
@@ -27,16 +25,17 @@ pub fn convert_cpu_usage_to_milli(cpu: &str) -> i32{
             denominator = 1000.0;
         }
         "n" => {}
-        &_ => { error!("Unknown CPU unit") }
+        &_ => {
+            error!("Unknown CPU unit")
+        }
     }
 
-    let result = (parsed_value/denominator).ceil() as i32;
+    let result = (parsed_value / denominator).ceil() as i32;
 
     result
 }
-pub fn convert_memory_usage_to_bytes(memory: &str) -> i64{
-    if memory.is_empty()
-    {
+pub fn convert_memory_usage_to_bytes(memory: &str) -> i64 {
+    if memory.is_empty() {
         return 0;
     }
 
@@ -50,7 +49,7 @@ pub fn convert_memory_usage_to_bytes(memory: &str) -> i64{
     }
 
     let parsed_value: i64 = value.parse().unwrap_or_else(|_| 0i64);
-    let mut multiplier: i64= 1024;
+    let mut multiplier: i64 = 1024;
 
     match unit.as_str() {
         "" => {
@@ -77,14 +76,6 @@ pub fn convert_memory_usage_to_bytes(memory: &str) -> i64{
         }
         &_ => {}
     }
-    
+
     return parsed_value * multiplier;
-}
-
-pub fn skip_serializing_int64(n: &i64) -> bool {
-    n.is_negative()
-}
-
-pub fn skip_serializing_int32(n: &i32) -> bool {
-    n.is_negative()
 }
